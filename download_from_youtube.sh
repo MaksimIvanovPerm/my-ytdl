@@ -12,7 +12,8 @@ CONF_FILE=${BASE_DIR}"/download_from_youtube.conf"
  exit 1
 }
 
-AUTO_PROFILE=${AUTO_PROFILE:-"--no-warnings -f best --restrict-filenames"}
+BEST_PROFILE=${AUTO_PROFILE:-"--no-warnings -f best --restrict-filenames"}
+WORST_PROFILE=${WORST_PROFILE:-"--no-warnings -f worst --restrict-filenames"}
 YOUTUBEDL=${YOUTUBEDL:-"/usr/local/bin/youtube-dl"}
 SCRIPT=${SCRIPT:-$BASE_DIR"/script2execute.sh"}
 LINES_LIMIT=${LINES_LIMIT:-"1000"}
@@ -67,6 +68,20 @@ usage() {
 cat << __EOFF__
 Use: `basename $0` [options]...
 See also config file, which name should be $CONF_FILE
+-m|--mode	should be ASK|BEST|WORST it's about quality of content which'll be downloaded;
+		Default: BEST
+-u|--urls	Should be double-quoted string of whitespace separated url, one or more url;
+
+About parameter in config-file:
+SAVEDIR		Folder for files of downloaded contents;
+LOG_FILE	Full-path of log file;
+DEBUG		1: do debug output; Any other value - do not debug output;
+URLS_LIST	File with url, one url in one line
+BEST_PROFILE	Set of youtube-dl for download content with best quality of media, f.e.: "--no-progress --no-warnings -f best --restrict-filenames"
+WORST_PROFILE	Set of youtube-dl for download content with best quality of media, f.e.: "--no-progress --no-warnings -f worst --restrict-filenames"
+YOUTUBEDL	Full-path to the youtube-dl utility
+SCRIPT		Full-path to file where youtube-dl statement(s) will be placed
+LINES_LIMIT	Limit for amount of string-lines in log file;
 __EOFF__
 }
 #-- Main routine -----------------------------------------------------
@@ -138,7 +153,7 @@ do
              ;;
   -m|--mode) shift
              MODE=`echo -n "$1" | tr [:lower:] [:upper:]`
-             [[ ! $MODE =~ ASK|AUTO ]] && { 
+             [[ ! $MODE =~ ASK|BEST|WORST ]] && { 
                                            output "incorrect value for -m|--mode arg; Use -h|--help for usage help;"
                                            exit 1
                                            }
@@ -151,7 +166,7 @@ do
  shift
 done
 
-[ -z "$MODE" ] && MODE="AUTO"
+[ -z "$MODE" ] && MODE="BEST"
 [ "$DEBUG" -eq "1" ] && output "MODE: $MODE; URLS: $URLS"
 
 if [ -z "$URLS" ]
@@ -210,12 +225,12 @@ do
  v_file_name=`translit_file_name "$v_file_name"`
  echo "==>${SAVEDIR}"/"${v_file_name}<=="
  [ -f "${SAVEDIR}"/"${v_file_name}" ] && rm -f "${SAVEDIR}"/"${v_file_name}"
- if [ "$MODE" == "ASK" ]
- then
-  v_options="--no-warnings ${v_format} --restrict-filenames"
- else
-  v_options=${AUTO_PROFILE}
- fi
+
+ case "$MODE" in
+  "ASK") v_options="--no-progress --no-warnings ${v_format} --restrict-filenames";;
+  "BEST") v_options=${BEST_PROFILE};;
+  "WORST") v_options=${WORST_PROFILE};;
+ esac
 
  echo "$YOUTUBEDL $v_options -o \"${SAVEDIR}"/"${v_file_name}\" $YOUTUBE_URL" | tee -a $SCRIPT
 
