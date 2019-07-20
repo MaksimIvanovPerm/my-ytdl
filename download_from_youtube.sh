@@ -12,11 +12,14 @@ CONF_FILE=${BASE_DIR}"/download_from_youtube.conf"
  exit 1
 }
 
-BEST_PROFILE=${AUTO_PROFILE:-"--no-warnings -f best --restrict-filenames"}
-WORST_PROFILE=${WORST_PROFILE:-"--no-warnings -f worst --restrict-filenames"}
+BEST_PROFILE=${AUTO_PROFILE:-"--no-progress --no-warnings -f best --restrict-filenames"}
+WORST_PROFILE=${WORST_PROFILE:-"--no-progress --no-warnings -f worst --restrict-filenames"}
+ASK_PROFILE=${ASK_PROFILE:-"--no-progress --no-warnings --restrict-filenames"}
 YOUTUBEDL=${YOUTUBEDL:-"/usr/local/bin/youtube-dl"}
 SCRIPT=${SCRIPT:-$BASE_DIR"/script2execute.sh"}
 LINES_LIMIT=${LINES_LIMIT:-"1000"}
+DOP=${DOP:-2}
+[ "$DOP" -gt "8" ] && DOP=8
 #-- Subroutines --------------------------------------------------------------
 output () {
  local v_msg=$1
@@ -71,6 +74,8 @@ See also config file, which name should be $CONF_FILE
 -m|--mode	should be ASK|BEST|WORST it's about quality of content which'll be downloaded;
 		Default: BEST
 -u|--urls	Should be double-quoted string of whitespace separated url, one or more url;
+-d|--dop	Degree of parallelism of download; That is: how many download should be run simultaneously; 
+		Maximum allowed value: 8; Default: 2;
 
 About parameter in config-file:
 SAVEDIR		Folder for files of downloaded contents;
@@ -82,10 +87,67 @@ WORST_PROFILE	Set of youtube-dl for download content with best quality of media,
 YOUTUBEDL	Full-path to the youtube-dl utility
 SCRIPT		Full-path to file where youtube-dl statement(s) will be placed
 LINES_LIMIT	Limit for amount of string-lines in log file;
+DOP		Degree of parallelism of download; That is: how many download should be run simultaneously;
+		Maximum allowed value: 8; Default: 2;
 __EOFF__
 }
+
+export download_func="downloadit () {
+ output \"\$\$: \$1\";
+ eval \"\$1\"
+}"
+
+
 #-- Main routine -----------------------------------------------------
 v_module="main"
+
+[ "$DEBUG" -eq "1" ] && output "$@"
+options=$(getopt -o hm:u:d: -l help,mode:,urls:,dop: -- "$@")
+if [ "$?" -ne 0 ]
+then
+ output "$module ERROR: Some error happened while arguments of script-call were parsed;"
+ output "$module See help by ${SCRIPT_NAME} -h"
+ exit 3
+else
+ [ "$DEBUG" -eq "1" ] && output "$module getopt output is: ${options}"
+fi
+
+eval set -- "$options"
+MODE=""
+URLS=""
+while [ ! -z "$1" ]
+do
+ case "$1" in
+  --) shift
+      ;;
+  -h|--help) usage
+             exit 0
+             ;;
+  -m|--mode) shift
+             MODE=`echo -n "$1" | tr [:lower:] [:upper:]`
+             [[ ! "$MODE" =~ ASK|BEST|WORST ]] && { 
+                                           output "incorrect value for -m|--mode arg; Use -h|--help for usage help;"
+                                           exit 1
+                                           }
+             ;;
+  -u|--urls) shift
+             URLS="$1"
+             ;;
+  -d|--dop) shift
+            DOP="$1"
+            [[ ! "$DOP" =~ [0-9]+ ]] && {
+                                         output "incorrect value for -d|--dop arg; Use -h|--help for usage help;"
+                                         exit 1
+                                        }
+            [[ "$DOP" -gt "8" ]] && {
+                                         output "Value for -d|--dop arg should be less than or equal 8; Use -h|--help for usage help;"
+                                         DOP=8
+                                      }
+           ;;
+  *) break ;;  
+ esac
+ shift
+done
 
 if [ ! -z "$LOG_FILE" ]
 then
@@ -129,43 +191,6 @@ then
  exit 1
 fi
 
- [ "$DEBUG" -eq "1" ] && output "$@"
-options=$(getopt -o hm:u: -l help,mode:,urls: -- "$@")
-if [ "$?" -ne 0 ]
-then
- output "$module ERROR: Some error happened while arguments of script-call were parsed;"
- output "$module See help by ${SCRIPT_NAME} -h"
- exit 3
-else
- [ "$DEBUG" -eq "1" ] && output "$module getopt output is: ${options}"
-fi
-
-eval set -- "$options"
-MODE=""
-URLS=""
-while [ ! -z "$1" ]
-do
- case "$1" in
-  --) shift
-      ;;
-  -h|--help) usage
-             exit 0
-             ;;
-  -m|--mode) shift
-             MODE=`echo -n "$1" | tr [:lower:] [:upper:]`
-             [[ ! $MODE =~ ASK|BEST|WORST ]] && { 
-                                           output "incorrect value for -m|--mode arg; Use -h|--help for usage help;"
-                                           exit 1
-                                           }
-             ;;
-  -u|--urls) shift
-             URLS=$1
-             ;;
-  *) break ;;  
- esac
- shift
-done
-
 [ -z "$MODE" ] && MODE="BEST"
 [ "$DEBUG" -eq "1" ] && output "MODE: $MODE; URLS: $URLS"
 
@@ -194,6 +219,9 @@ fi
    v_x=$((v_x+1))
   done
 
+output "DOP=$DOP"
+#output "URLS=$URLS"
+output "MODE=$MODE"
 output "Processing list of urls"
 v_x=1
 for YOUTUBE_URL in $URLS
@@ -227,7 +255,7 @@ do
  [ -f "${SAVEDIR}"/"${v_file_name}" ] && rm -f "${SAVEDIR}"/"${v_file_name}"
 
  case "$MODE" in
-  "ASK") v_options="--no-progress --no-warnings ${v_format} --restrict-filenames";;
+  "ASK") v_options=${ASK_PROFILE}" "${v_format};;
   "BEST") v_options=${BEST_PROFILE};;
   "WORST") v_options=${WORST_PROFILE};;
  esac
@@ -237,8 +265,13 @@ do
  v_x=$((v_x+1))
 done
 
-chmod u+x $SCRIPT
-$SCRIPT | tee -a $LOG_FILE
+#cat $SCRIPT
+#exit 0
+#declare -p 
+cat $SCRIPT | xargs -n 1 -P $DOP -d "\n" -I {} bash -c 'echo $$; eval'\ \"\{\}\" | tee -a $LOG_FILE
+
+#chmod u+x $SCRIPT
+#$SCRIPT | tee -a $LOG_FILE
 
 LINES_COUNT=`cat $LOG_FILE | wc -l`
 if [ "$LINES_COUNT" -gt "$LINES_LIMIT" ]
