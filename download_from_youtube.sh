@@ -62,7 +62,7 @@ function translit_file_name {
  TRS=${TRS//./}
  TRS=${TRS//,/}
  TRS=${TRS//\'/}
- TRS=$(echo -e $TRS | tr -d [\<\>])
+ TRS=$(echo -e $TRS | tr -d [\<\>\!\%])
  TRS=$(echo -e $TRS | tr [\ ] [\_])
  echo "${TRS}.${extension}" 
 }
@@ -76,7 +76,11 @@ See also config file, which name should be $CONF_FILE
 -u|--urls	Should be double-quoted string of whitespace separated url, one or more url;
 -d|--dop	Degree of parallelism of download; That is: how many download should be run simultaneously; 
 		Maximum allowed value: 8; Default: 2;
-
+-r|--retry	`basename $0` makes script-file with youtube-dl statements, for downloading video for you,
+		by urls which you provide;
+		In case youtube-dl download(s) hanged, while working, and you cancel it by ctrl-c or somehow, 
+		you can ask `basename $0` to retry to execute the script-file with help of -r|--retry options;
+##############################################################################################################
 About parameter in config-file:
 SAVEDIR		Folder for files of downloaded contents;
 LOG_FILE	Full-path of log file;
@@ -97,12 +101,29 @@ export download_func="downloadit () {
  eval \"\$1\"
 }"
 
+retry() {
+ echo "It's retry module"
+ if [ -f "$SCRIPT" ]
+ then
+  if [ `cat $SCRIPT | wc -l` -gt "0" ]
+  then
+   echo "Well ok script, which is supposed to contain youtube-dl was found and it isn't empty;"
+   echo "Try to execute it with default settings"
+   cat $SCRIPT | xargs -n 1 -P $DOP -d "\n" -I {} bash -c 'echo $$; eval'\ \"\{\}\" | tee -a $LOG_FILE
+  else
+   echo "Script-file with youtube-dl calls was found as $SCRIPT but it empty;"
+  fi
+ else
+  echo "Script-file with youtube-dl calls isn't found as $SCRIPT"
+  echo "Nothing will be done"
+ fi
+}
 
 #-- Main routine -----------------------------------------------------
 v_module="main"
 
 [ "$DEBUG" -eq "1" ] && output "$@"
-options=$(getopt -o hm:u:d: -l help,mode:,urls:,dop: -- "$@")
+options=$(getopt -o hm:u:d:r: -l help,mode:,urls:,dop:,retry: -- "$@")
 if [ "$?" -ne 0 ]
 then
  output "$module ERROR: Some error happened while arguments of script-call were parsed;"
@@ -120,6 +141,8 @@ do
  case "$1" in
   --) shift
       ;;
+  -r|--retry) retry
+	      ;;
   -h|--help) usage
              exit 0
              ;;
@@ -276,7 +299,7 @@ cat $SCRIPT | xargs -n 1 -P $DOP -d "\n" -I {} bash -c 'echo $$; eval'\ \"\{\}\"
 LINES_COUNT=`cat $LOG_FILE | wc -l`
 if [ "$LINES_COUNT" -gt "$LINES_LIMIT" ]
 then
-        LINES_COUNT=`echo $LINES_COUNT-$LINES_LIMIT | bc`
+        LINES_COUNT=`echo $LINES_COUNT $LINES_LIMIT | awk '{x=$1-$2; printf "%d", x;}'`
         sed -i "1,${LINES_COUNT}d" $LOG_FILE
 fi
 
