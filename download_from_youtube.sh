@@ -14,6 +14,7 @@ CONF_FILE=${BASE_DIR}"/download_from_youtube.conf"
 
 BEST_PROFILE=${AUTO_PROFILE:-"--no-progress --no-warnings -f best --restrict-filenames"}
 WORST_PROFILE=${WORST_PROFILE:-"--no-progress --no-warnings -f worst --restrict-filenames"}
+BESTAUDIO_PROFILE=${BESTAUDIO_PROFILE:-"--no-progress --no-warnings -f bestaudio --restrict-filenames"}
 ASK_PROFILE=${ASK_PROFILE:-"--no-progress --no-warnings --restrict-filenames"}
 YOUTUBEDL=${YOUTUBEDL:-"/usr/local/bin/youtube-dl"}
 SCRIPT=${SCRIPT:-$BASE_DIR"/script2execute.sh"}
@@ -71,8 +72,8 @@ usage() {
 cat << __EOFF__
 Use: `basename $0` [options]...
 See also config file, which name should be $CONF_FILE
--m|--mode	should be ASK|BEST|WORST it's about quality of content which'll be downloaded;
-		Default: BEST
+-m|--mode	should be ASK|BEST|WORST|BAUDIO it's about type|quality of content which'll be downloaded;
+		Default: BEST; Case insensitive;
 -u|--urls	Should be double-quoted string of whitespace separated url, one or more url;
 -d|--dop	Degree of parallelism of download; That is: how many download should be run simultaneously; 
 		Maximum allowed value: 8; Default: 2;
@@ -148,7 +149,7 @@ do
              ;;
   -m|--mode) shift
              MODE=`echo -n "$1" | tr [:lower:] [:upper:]`
-             [[ ! "$MODE" =~ ASK|BEST|WORST ]] && { 
+             [[ ! "$MODE" =~ ASK|BEST|WORST|BAUDIO ]] && { 
                                            output "incorrect value for -m|--mode arg; Use -h|--help for usage help;"
                                            exit 1
                                            }
@@ -281,6 +282,7 @@ do
   "ASK") v_options=${ASK_PROFILE}" "${v_format};;
   "BEST") v_options=${BEST_PROFILE};;
   "WORST") v_options=${WORST_PROFILE};;
+  "BAUDIO") v_options=${BESTAUDIO_PROFILE};;
  esac
 
  echo "$YOUTUBEDL $v_options -o \"${SAVEDIR}"/"${v_file_name}\" $YOUTUBE_URL" | tee -a $SCRIPT
